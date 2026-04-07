@@ -1,0 +1,21 @@
+[project]
+name = "xhs-auto-poster"
+version = "0.1.0"
+description = "小红书登录后自动发布工具"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.115.0",
+  "playwright>=1.53.0",
+  "pyinstaller>=6.19.0",
+  "pywebview>=6.1",
+  "uvicorn>=0.32.0",
+]
+
+[project.scripts]
+xhs-auto-post = "xhs_auto_poster.main:main"
+xhs-auto-post-ui = "xhs_auto_poster.web_main:main"
+
+[build-system]
+requires = ["hatchling>=1.24.0"]
+build-backend = "hatchling.build"

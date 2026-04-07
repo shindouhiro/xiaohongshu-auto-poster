@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: 'Noto Sans SC', sans-serif;
+  background:
+    radial-gradient(1200px 500px at -10% -20%, hsl(22 92% 66% / 0.35), transparent 55%),
+    radial-gradient(1000px 580px at 120% -10%, hsl(14 86% 58% / 0.26), transparent 55%),
+    linear-gradient(160deg, hsl(32 100% 98%), hsl(22 55% 97%));
+  color: hsl(18 20% 18%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+textarea {
+  resize: vertical;
+}

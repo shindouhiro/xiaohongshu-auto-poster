@@ -1,0 +1,17 @@
+{
+  "title": "验证标题",
+  "content": "验证正文",
+  "images": [
+    "./demo-1.jpg"
+  ],
+  "topics": [
+    "验证"
+  ],
+  "user_data_dir": "../.xhs_profile_verify",
+  "headless": true,
+  "browser_channel": "chrome",
+  "browser_executable_path": null,
+  "slow_mo_ms": 0,
+  "wait_login_timeout_seconds": 8,
+  "dry_run": true
+}

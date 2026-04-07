@@ -1,0 +1,26 @@
+{
+  "name": "xhs-auto-poster-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n API,WEB -c yellow,cyan \"pnpm dev:api\" \"pnpm dev:web\"",
+    "dev:web": "vite",
+    "dev:api": "sh -c \"if lsof -iTCP:8000 -sTCP:LISTEN -n -P >/dev/null 2>&1; then echo '[API] 127.0.0.1:8000 已有服务，复用中'; tail -f /dev/null; else cd .. && uv run xhs-auto-post-ui --host 127.0.0.1 --port 8000 --reload; fi\"",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@radix-ui/react-switch": "^1.2.6",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^9.2.1",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "vite": "^4.5.14"
+  }
+}

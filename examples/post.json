@@ -1,0 +1,18 @@
+{
+  "title": "这是自动发布测试标题",
+  "content": "这是自动发布测试正文，登录成功后会自动填写并点击发布。",
+  "images": [
+    "./demo-1.jpg"
+  ],
+  "topics": [
+    "自动化",
+    "效率工具"
+  ],
+  "user_data_dir": "../.xhs_profile",
+  "headless": false,
+  "browser_channel": "chrome",
+  "browser_executable_path": null,
+  "slow_mo_ms": 80,
+  "wait_login_timeout_seconds": 300,
+  "dry_run": true
+}

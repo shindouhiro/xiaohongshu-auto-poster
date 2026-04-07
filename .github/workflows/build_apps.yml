@@ -1,0 +1,73 @@
+name: Build Desktop Apps
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node_version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Build Frontend
+        run: |
+          cd web
+          pnpm install
+          pnpm build
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+        shell: bash
+        if: runner.os != 'Windows'
+
+      - name: Setup uv (Windows)
+        run: |
+          powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+        if: runner.os == 'Windows'
+
+      - name: Install dependencies
+        run: |
+          uv sync
+
+      - name: Package with PyInstaller (Mac)
+        if: runner.os == 'macOS'
+        run: |
+          uv run pyinstaller --onefile --windowed --add-data "web/dist:web/dist" --name "xhs-poster-mac" src/xhs_auto_poster/desktop_app.py
+
+      - name: Package with PyInstaller (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          uv run pyinstaller --onefile --windowed --add-data "web/dist;web/dist" --name "xhs-poster-windows" src/xhs_auto_poster/desktop_app.py
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xhs-poster-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.app
+            dist/*.zip
