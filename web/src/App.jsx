@@ -58,6 +58,33 @@ function App() {
     setIsSubmitting(true);
     setResult(null);
 
+    // --- 新增：兼容桌面应用模式 ---
+    if (window.pywebview && window.pywebview.api) {
+      try {
+        console.log('检测到桌面应用环境，正在通过 Bridge 调用后端...');
+        const data = await window.pywebview.api.publish_note(requestPayload);
+        
+        // 统一接口返回格式
+        setResult({
+          success: data.status === 'success',
+          message: data.message,
+          logs: data.logs || [],
+          duration_seconds: data.duration || 0,
+        });
+      } catch (error) {
+        setResult({
+          success: false,
+          message: `桌面端调用异常: ${error.message}`,
+          logs: [],
+          duration_seconds: 0,
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+    // --- 桌面模式结束 ---
+
     try {
       const response = await fetch(`${API_BASE}/api/publish`, {
         method: 'POST',
