@@ -19,13 +19,24 @@ class API:
     def publish_note(self, data):
         """前端点击发布按钮时调用"""
         try:
-            # 数据转换 (根据你的 Web 前端传来的 JSON 结构映射)
+            # 修正路径逻辑：禁止在根目录写入，改为在用户家目录下创建一个隐藏文件夹
+            raw_dir = data.get("user_data_dir", ".xhs_profile")
+            
+            # 安全路径解析：如果是相对路径或指向根目录的隐藏路径，则纠正到用户家目录
+            if not Path(raw_dir).is_absolute() or raw_dir.startswith("/."):
+                user_data_dir = Path.home() / ".xhs_auto_poster" / Path(raw_dir).name
+            else:
+                user_data_dir = Path(raw_dir).resolve()
+            
+            # 确保目录存在
+            user_data_dir.parent.mkdir(parents=True, exist_ok=True)
+            
             config = PublishConfig(
-                title=data.get("title"),
-                content=data.get("content"),
+                title=data.get("title", ""),
+                content=data.get("content", ""),
                 images=[Path(p) for p in data.get("images", [])],
                 topics=data.get("topics", []),
-                user_data_dir=Path(data.get("user_data_dir", ".xhs_profile")).resolve(),
+                user_data_dir=user_data_dir,
                 headless=data.get("headless", False),
                 slow_mo_ms=80,
                 wait_login_timeout_seconds=300,
@@ -34,9 +45,9 @@ class API:
                 browser_executable_path=None,
             )
             
-            print(f"[桌面端] 准备发布笔记: {config.title}")
+            print(f"[桌面端] 准备发布笔记: {config.title} (存储目录: {user_data_dir})")
             run(config)
-            return {"status": "success", "message": "发布流程已完成"}
+            return {"status": "success", "message": "发布流程已完成", "duration": 0}
         except Exception as e:
             print(f"[错误] {str(e)}")
             return {"status": "error", "message": str(e)}
