@@ -28,6 +28,8 @@ function splitLines(value) {
 
 function App() {
   const [form, setForm] = useState(INITIAL_FORM);
+  const [isSelectingLocal, setIsSelectingLocal] = useState(false);
+  const [uploadImages, setUploadImages] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState(null);
 
@@ -36,7 +38,7 @@ function App() {
       title: form.title,
       content: form.content,
       topics: splitLines(form.topics).map((topic) => topic.replace(/^#/, '')),
-      images: splitLines(form.images),
+      images: [...splitLines(form.images), ...uploadImages.map((img) => img.data)],
       user_data_dir: form.userDataDir,
       base_dir: form.baseDir || null,
       browser_channel: form.browserChannel || null,
@@ -46,15 +48,69 @@ function App() {
       headless: form.headless,
       dry_run: form.dryRun,
     }),
-    [form],
+    [form, uploadImages],
   );
 
   function onInputChange(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        setUploadImages((prev) => [
+          ...prev,
+          { id: Math.random().toString(36).slice(2), name: file.name, data: evt.target.result },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = null;
+  };
+
+  const removeUploadImage = (id) => {
+    setUploadImages((prev) => prev.filter((img) => img.id !== id));
+  };
+
+  const handleNativeSelect = async () => {
+    setIsSelectingLocal(true);
+    try {
+      let paths = [];
+      if (window.pywebview && window.pywebview.api) {
+        const res = await window.pywebview.api.select_images();
+        if (res.status === 'success') {
+          paths = res.paths;
+        }
+      } else {
+        const response = await fetch(`${API_BASE}/api/select_images`);
+        const data = await response.json();
+        if (data.paths) {
+          paths = data.paths;
+        }
+      }
+      
+      if (paths.length > 0) {
+        onInputChange('images', prev => {
+          const current = splitLines(prev);
+          return [...new Set([...current, ...paths])].join('\n');
+        });
+      }
+    } catch (error) {
+      console.error('选择图片失败', error);
+      alert('无法唤起本地文件选择，请手动粘贴图片路径');
+    } finally {
+      setIsSelectingLocal(false);
+    }
+  };
+
   async function onSubmit(event) {
     event.preventDefault();
+    if (requestPayload.images.length === 0) {
+      alert('请至少上传一张图片或输入图片路径！');
+      return;
+    }
     setIsSubmitting(true);
     setResult(null);
 
@@ -187,18 +243,72 @@ function App() {
               />
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="publish-images-textarea" className="text-sm font-medium text-slate-700">
-                图片路径（每行一个）
-              </label>
-              <textarea
-                id="publish-images-textarea"
-                className="min-h-24 w-full rounded-xl border border-brand-200 bg-white px-3 py-2 font-mono text-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-300"
-                placeholder="/Users/you/Desktop/demo-1.jpg"
-                value={form.images}
-                onChange={(event) => onInputChange('images', event.target.value)}
-                required
-              />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-slate-700">笔记图片</label>
+                <button
+                  type="button"
+                  onClick={handleNativeSelect}
+                  disabled={isSelectingLocal}
+                  className="rounded-lg bg-brand-100 px-3 py-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-200 disabled:opacity-50"
+                  title="唤起系统的原生文件选择对话框获取绝对路径"
+                >
+                  {isSelectingLocal ? '正在唤起对话框...' : '浏览本地图片获取路径'}
+                </button>
+              </div>
+              
+              <div className="relative flex cursor-pointer flex-col items-center justify-center space-y-2 overflow-hidden rounded-xl border-2 border-dashed border-brand-200 bg-brand-50/50 p-6 text-center transition hover:border-brand-400 hover:bg-brand-50">
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+                <div className="text-brand-600">
+                  <svg className="mb-1 h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-brand-700">点击或拖拽上传多张图片</p>
+                <p className="text-xs text-brand-400">支持 JPG, PNG 等常见格式</p>
+              </div>
+
+              {uploadImages.length > 0 && (
+                <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-brand-200">
+                  {uploadImages.map((img) => (
+                    <div key={img.id} className="group relative h-28 w-28 shrink-0 snap-center overflow-hidden rounded-lg border border-brand-100 bg-white shadow-sm">
+                      <img src={img.data} alt="preview" className="h-full w-full object-cover transition group-hover:scale-105" />
+                      <button
+                        type="button"
+                        onClick={() => removeUploadImage(img.id)}
+                        className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white opacity-0 backdrop-blur-sm transition hover:bg-rose-500 group-hover:opacity-100"
+                        title="移除图片"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                      <div className="absolute bottom-0 left-0 right-0 truncate bg-black/40 px-1.5 py-1 text-[10px] text-white">
+                        {img.name}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <details className="group">
+                <summary className="mt-1 cursor-pointer text-xs text-brand-500 hover:text-brand-600">
+                  使用本地绝对路径 (高级)
+                </summary>
+                <textarea
+                  id="publish-images-textarea"
+                  className="mt-2 min-h-24 w-full rounded-xl border border-brand-200 bg-white px-3 py-2 font-mono text-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-300"
+                  placeholder="如果图片已在电脑上，可直接输入绝对路径（每行一个）&#10;/Users/you/Desktop/demo-1.jpg"
+                  value={form.images}
+                  onChange={(event) => onInputChange('images', event.target.value)}
+                />
+              </details>
             </div>
           </div>
 

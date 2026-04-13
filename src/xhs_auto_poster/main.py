@@ -528,7 +528,8 @@ def _publish_note(page: Page, config: PublishConfig) -> None:
         raise RuntimeError(f"未找到图文上传文件框，当前 file accept: {accepts}")
 
     file_input.set_input_files([str(p) for p in config.images])
-    print(f"[状态] 已上传图片 {len(config.images)} 张")
+    print(f"[状态] 已上传图片 {len(config.images)} 张，正在等待图片加载...")
+    page.wait_for_timeout(3000 + len(config.images) * 1500)
     _wait_until_editor_controls_ready(page, timeout_seconds=30)
 
     _try_fill_input(
@@ -571,31 +572,47 @@ def _publish_note(page: Page, config: PublishConfig) -> None:
         return
 
     print("[步骤 3/3] 点击发布...")
-    publish_selectors = [
-        "button:has-text('发布')",
-        "button:has-text('发布笔记')",
-        "span.btn-text:has-text('发布笔记')",
-        "text=/发布笔记|发布/",
-        "button[type='submit']",
+    
+    # 使用 exact 匹配，防止误触顶部导航栏的 "发布图文"
+    publish_candidates = [
+        page.get_by_role("button", name="发布", exact=True),
+        page.get_by_role("button", name="发布笔记", exact=True),
+        page.locator("button:text-is('发布')"),
+        page.locator("button:text-is('发布笔记')"),
+        page.locator("div.submit-wrapper button:has-text('发布')"),
+        page.locator("button.el-button--primary:has-text('发布')"),
+        page.locator("span.btn-text:text-is('发布')"),
+        page.locator("button.publishBtn"),
     ]
 
-    for selector in publish_selectors:
-        button = page.locator(selector).first
+    clicked = False
+    for candidate in publish_candidates:
         try:
-            button.wait_for(state="visible", timeout=2_000)
-            button.click()
-            print(f"[状态] 已触发发布，命中选择器: {selector}")
-            break
-        except TimeoutError:
-            continue
+            count = candidate.count()
         except Error:
+            continue
+            
+        if count > 0:
+            # 往往真正的发布按钮位于页面下方，如果在有多个匹配时，优先取最后一个。
+            button = candidate.nth(count - 1)
             try:
-                button.evaluate("el => (el.closest('button,[role=button],div') || el).click()")
-                print(f"[状态] 已通过父节点触发发布，命中选择器: {selector}")
+                button.wait_for(state="visible", timeout=2_000)
+                button.click()
+                print(f"[状态] 已触发发布。")
+                clicked = True
                 break
-            except Error:
+            except TimeoutError:
                 continue
-    else:
+            except Error:
+                try:
+                    button.evaluate("el => (el.closest('button,[role=button],div') || el).click()")
+                    print(f"[状态] 已通过父节点触发发布。")
+                    clicked = True
+                    break
+                except Error:
+                    continue
+
+    if not clicked:
         raise RuntimeError("未找到发布按钮，页面结构可能已变化")
 
     try:
@@ -603,6 +620,9 @@ def _publish_note(page: Page, config: PublishConfig) -> None:
     except TimeoutError:
         # 某些账号不会立即出现提示文案，不阻断流程。
         pass
+        
+    print("[状态] 保留几秒等待后台发布请求完全送达...")
+    page.wait_for_timeout(6000)
 
     print("[完成] 发布流程已执行完成。")
 

@@ -42,7 +42,31 @@ def _normalize_request_payload(req: PublishRequest) -> tuple[dict[str, Any], Pat
     payload = req.model_dump()
 
     payload["topics"] = [topic.strip().lstrip("#") for topic in payload["topics"] if topic.strip()]
-    payload["images"] = [str(Path(image).expanduser()) for image in payload["images"] if image.strip()]
+    
+    processed_images = []
+    import base64
+    import tempfile
+    for idx, image in enumerate(payload["images"]):
+        image = image.strip()
+        if not image:
+            continue
+        if image.startswith("data:image/"):
+            try:
+                header, encoded = image.split(",", 1)
+                ext = header.split(";")[0].split("/")[1]
+                if ext == "jpeg":
+                    ext = "jpg"
+                temp_dir = Path(tempfile.mkdtemp(prefix="xhs_images_"))
+                file_path = temp_dir / f"image_{idx}.{ext}"
+                with open(file_path, "wb") as f:
+                    f.write(base64.b64decode(encoded))
+                processed_images.append(str(file_path))
+            except Exception as e:
+                print(f"Failed to parse base64 image: {e}")
+        else:
+            processed_images.append(str(Path(image).expanduser()))
+            
+    payload["images"] = processed_images
 
     base_dir = Path(payload.pop("base_dir") or Path.cwd()).expanduser().resolve()
     return payload, base_dir
@@ -67,6 +91,35 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/select_images")
+    def select_images_api() -> dict[str, list[str]]:
+        import subprocess, sys, json
+        code = """
+import tkinter as tk
+from tkinter import filedialog
+import json
+import os
+# Make tkinter work properly on mac
+if os.uname().sysname == 'Darwin':
+    os.system('''/usr/bin/osascript -e 'tell app "System Events" to set frontmost of process "Python" to true' ''')
+root = tk.Tk()
+root.withdraw()
+root.attributes('-topmost', True)
+file_paths = filedialog.askopenfilenames(
+    title="选择图片",
+    filetypes=[("Image Files", "*.bmp *.jpg *.jpeg *.png *.gif *.webp"), ("All Files", "*.*")]
+)
+root.destroy()
+print(json.dumps(list(file_paths)))
+"""
+        try:
+            result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+            paths = json.loads(result.stdout)
+            return {"paths": paths}
+        except Exception as e:
+            print(f"File dialog error: {e}")
+            return {"paths": []}
 
     @app.post("/api/publish", response_model=PublishResponse)
     def publish(req: PublishRequest) -> PublishResponse:

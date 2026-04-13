@@ -16,6 +16,18 @@ WEB_DIST_DIR = get_resource_path("web/dist")
 
 class API:
     """供 JavaScript 调用的接口"""
+    def select_images(self, data=None):
+        import webview
+        try:
+            window = webview.windows[0]
+            file_types = ('Image Files (*.bmp;*.jpg;*.jpeg;*.png;*.gif;*.webp)', 'All files (*.*)')
+            result = window.create_file_dialog(
+                webview.OPEN_DIALOG, allow_multiple=True, file_types=file_types
+            )
+            return {"status": "success", "paths": result if result else []}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     def publish_note(self, data):
         """前端点击发布按钮时调用"""
         try:
@@ -31,10 +43,33 @@ class API:
             # 确保目录存在
             user_data_dir.parent.mkdir(parents=True, exist_ok=True)
             
+            import base64
+            import tempfile
+            processed_images = []
+            for idx, img in enumerate(data.get("images", [])):
+                img = str(img).strip()
+                if not img:
+                    continue
+                if img.startswith("data:image/"):
+                    try:
+                        header, encoded = img.split(",", 1)
+                        ext = header.split(";")[0].split("/")[1]
+                        if ext == "jpeg":
+                            ext = "jpg"
+                        temp_dir = Path(tempfile.mkdtemp(prefix="xhs_images_"))
+                        file_path = temp_dir / f"image_{idx}.{ext}"
+                        with open(file_path, "wb") as f:
+                            f.write(base64.b64decode(encoded))
+                        processed_images.append(file_path)
+                    except Exception as e:
+                        print(f"Failed to parse base64 image: {e}")
+                else:
+                    processed_images.append(Path(img))
+            
             config = PublishConfig(
                 title=data.get("title", ""),
                 content=data.get("content", ""),
-                images=[Path(p) for p in data.get("images", [])],
+                images=processed_images,
                 topics=data.get("topics", []),
                 user_data_dir=user_data_dir,
                 headless=data.get("headless", False),
