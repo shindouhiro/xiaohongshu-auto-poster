@@ -121,6 +121,19 @@ print(json.dumps(list(file_paths)))
             print(f"File dialog error: {e}")
             return {"paths": []}
 
+    @app.get("/api/accounts")
+    def get_accounts() -> dict[str, list[str]]:
+        base = Path.home() / ".xhs_auto_poster"
+        if not base.exists():
+            return {"accounts": [".xhs_profile"]}
+        accounts = []
+        for p in base.iterdir():
+            if p.is_dir() and p.name.startswith(".xhs_profile"):
+                accounts.append(p.name)
+        if not accounts:
+            accounts.append(".xhs_profile")
+        return {"accounts": list(sorted(accounts))}
+
     @app.post("/api/publish", response_model=PublishResponse)
     def publish(req: PublishRequest) -> PublishResponse:
         if not _TASK_LOCK.acquire(blocking=False):

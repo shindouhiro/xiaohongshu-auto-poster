@@ -91,8 +91,10 @@ def _build_config_from_raw(raw: dict[str, Any], base_dir: Path) -> PublishConfig
         raise ValueError("`user_data_dir` 必须是非空字符串")
 
     user_data_dir = Path(user_data_dir_raw)
-    if not user_data_dir.is_absolute():
-        user_data_dir = (base_dir / user_data_dir).resolve()
+    if not user_data_dir.is_absolute() or user_data_dir_raw.startswith("."):
+        user_data_dir = Path.home() / ".xhs_auto_poster" / user_data_dir.name
+    else:
+        user_data_dir = user_data_dir.resolve()
 
     headless = bool(raw.get("headless", False))
     slow_mo_ms = int(raw.get("slow_mo_ms", 80))
@@ -573,53 +575,62 @@ def _publish_note(page: Page, config: PublishConfig) -> None:
 
     print("[步骤 3/3] 点击发布...")
     
-    # 使用 exact 匹配，防止误触顶部导航栏的 "发布图文"
-    publish_candidates = [
-        page.get_by_role("button", name="发布", exact=True),
-        page.get_by_role("button", name="发布笔记", exact=True),
-        page.locator("button:text-is('发布')"),
-        page.locator("button:text-is('发布笔记')"),
-        page.locator("div.submit-wrapper button:has-text('发布')"),
-        page.locator("button.el-button--primary:has-text('发布')"),
-        page.locator("span.btn-text:text-is('发布')"),
-        page.locator("button.publishBtn"),
-    ]
+    # 在点击发布前，先滚到页面底部，确保视图能看到发布按钮
+    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+    page.wait_for_timeout(1000)
 
-    clicked = False
-    for candidate in publish_candidates:
-        try:
-            count = candidate.count()
-        except Error:
-            continue
-            
-        if count > 0:
-            # 往往真正的发布按钮位于页面下方，如果在有多个匹配时，优先取最后一个。
-            button = candidate.nth(count - 1)
-            try:
-                button.wait_for(state="visible", timeout=2_000)
-                button.click()
-                print(f"[状态] 已触发发布。")
-                clicked = True
+    # 增强型的发布按钮匹配
+    publish_selector = "button.publishBtn, button:has-text('发布'), button:has-text('发布笔记')"
+    try:
+        # 确保按钮不仅可见，而且已经取消“禁用”状态（图片上传完后按钮才会变红变可用）
+        publish_btn = page.locator(publish_selector).last
+        publish_btn.wait_for(state="visible", timeout=10_000)
+        
+        # 循环检查直到按钮可用（防止图片处理中的置灰状态）
+        for _ in range(10):
+            if publish_btn.is_enabled():
                 break
-            except TimeoutError:
-                continue
-            except Error:
-                try:
-                    button.evaluate("el => (el.closest('button,[role=button],div') || el).click()")
-                    print(f"[状态] 已通过父节点触发发布。")
-                    clicked = True
-                    break
-                except Error:
-                    continue
+            print("[等待] 发布按钮当前不可用（可能图片正在处理），等待 1 秒...")
+            page.wait_for_timeout(1000)
 
-    if not clicked:
-        raise RuntimeError("未找到发布按钮，页面结构可能已变化")
+        publish_btn.click()
+        print(f"[状态] 已点击发布按钮。")
+    except Exception as e:
+        # 如果常规手段失败，尝试最后的强制点击
+        print(f"[状态] 常规点击失败: {e}，尝试兜底策略...")
+        page.evaluate("() => { const btns = Array.from(document.querySelectorAll('button')); const b = btns.find(x => x.innerText.includes('发布') && !x.innerText.includes('图文')); if(b) b.click(); }")
+
+    # 关键：截图保存以便用户排查
+    try:
+        screenshot_path = "debug_publish.png"
+        page.screenshot(path=screenshot_path)
+        print(f"[调试] 已保存发布瞬间的截图至: {screenshot_path}，如未发布成功请检查该图。")
+    except:
+        pass
 
     try:
-        page.wait_for_selector("text=/发布成功|发布中|审核中/", timeout=10_000)
-    except TimeoutError:
-        # 某些账号不会立即出现提示文案，不阻断流程。
+        # 更加激进地检查是否有任何带红色的报错浮窗
+        error_locator = page.locator(".toast-container, .el-message--error, .error-tip, .css-1nzkp5c")
+        if error_locator.count() > 0:
+            msgs = []
+            for i in range(error_locator.count()):
+                t = error_locator.nth(i).inner_text().strip()
+                if t: msgs.append(t)
+            if msgs:
+                print(f"[！！！发布被拦截！！！] 小红书反馈内容: {' | '.join(msgs)}")
+                # 特别针对手机号问题的友好提示
+                if "绑定手机号" in "".join(msgs):
+                    print("[建议] 你的账号目前未开启网页端发帖权限，请先在小红书APP上绑定手机号后再试。")
+    except:
         pass
+
+    try:
+        print("[状态] 正在确认发布结果...")
+        # 增加对“去查看”等跳转按钮的等待，作为成功的标志
+        page.wait_for_selector("text=/发布成功|发布中|审核中|查看笔记|去查看/", timeout=10_000)
+        print("[状态] 页面已反馈发布成功/审核中。")
+    except TimeoutError:
+        print("[警告] 10秒内未检测到成功提示，请检查截图 debug_publish.png 查看具体卡在哪一步。")
         
     print("[状态] 保留几秒等待后台发布请求完全送达...")
     page.wait_for_timeout(6000)

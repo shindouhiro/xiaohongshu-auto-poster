@@ -1,5 +1,5 @@
 import * as Switch from '@radix-ui/react-switch';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 const API_ENDPOINT_LABEL = API_BASE || '同源代理 /api (Vite -> 127.0.0.1:8000)';
@@ -32,6 +32,27 @@ function App() {
   const [uploadImages, setUploadImages] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  const [availableAccounts, setAvailableAccounts] = useState([]);
+
+  useEffect(() => {
+    async function fetchAccounts() {
+      try {
+        if (window.pywebview && window.pywebview.api && window.pywebview.api.get_accounts) {
+          const res = await window.pywebview.api.get_accounts();
+          if (res.status === 'success') {
+            setAvailableAccounts(res.accounts);
+          }
+        } else {
+          const response = await fetch(`${API_BASE}/api/accounts`);
+          const data = await response.json();
+          if (data.accounts) setAvailableAccounts(data.accounts);
+        }
+      } catch (error) {
+        console.error('获取账号列表失败', error);
+      }
+    }
+    fetchAccounts();
+  }, []);
 
   const requestPayload = useMemo(
     () => ({
@@ -318,15 +339,23 @@ function App() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <label htmlFor="publish-user-data-dir-input" className="text-sm font-medium text-slate-700">
-                  登录态目录
+                  登录账号缓存标识 (可下拉选择或自定义新名称)
                 </label>
                 <input
                   id="publish-user-data-dir-input"
+                  list="accounts-list"
                   className="w-full rounded-xl border border-brand-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-300"
                   value={form.userDataDir}
                   onChange={(event) => onInputChange('userDataDir', event.target.value)}
+                  placeholder=".xhs_profile_my_account"
                   required
                 />
+                <datalist id="accounts-list">
+                  {availableAccounts.map(acc => (
+                    <option key={acc} value={acc} />
+                  ))}
+                </datalist>
+                <p className="text-[11px] text-slate-400">切换不同的缓存文件夹名，即可实现多账号登录状态分离。若输入全新的名称，首次执行时会要求扫码登录。</p>
               </div>
 
               <div className="space-y-2 sm:col-span-2">
